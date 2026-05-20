@@ -1,2 +1,477 @@
 # 3D-Survey-Pilot
 3D Survey Pilot 시뮬레이터
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Survey Pilot - 드론 비행 시뮬레이터</title>
+    <!-- Tailwind CSS (UI 스타일링용) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Three.js (3D 그래픽 엔진) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls (3D 화면 회전/줌 조작용) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; }
+        .canvas-container { position: relative; width: 100%; height: 500px; background: #020617; border-radius: 0.75rem; overflow: hidden; }
+        #three-canvas { width: 100%; height: 100%; }
+    </style>
+</head>
+<body class="p-6 max-w-5xl mx-auto">
+
+    <header class="mb-6">
+        <h1 class="text-2xl font-bold text-sky-400">3D Survey Pilot</h1>
+        <p class="text-sm text-slate-400">드론 매핑 경로 설계 및 3D 가상 비행 체험 프로토타입</p>
+    </header>
+
+    <!-- 상단 단계 표시 바 -->
+    <div class="flex justify-between items-center bg-slate-800 p-4 rounded-xl mb-6 shadow-md">
+        <div id="step-indicators" class="flex w-full justify-around text-sm font-semibold">
+            <span id="ind-1" class="text-sky-400 border-b-2 border-sky-400 pb-1">1단계: 비행 패턴</span>
+            <span id="ind-2" class="text-slate-500">2단계: 중첩률 설정</span>
+            <span id="ind-3" class="text-slate-500">3단계: 고도 & 속도</span>
+            <span id="ind-4" class="text-slate-500">4단계: 3D 가상 체험</span>
+        </div>
+    </div>
+
+    <!-- 메인 콘텐츠 영역 -->
+    <div class="bg-slate-800 p-6 rounded-xl shadow-lg min-h-[550px] flex flex-col justify-between">
+        
+        <!-- 1단계: 비행 패턴 선택 -->
+        <div id="step-1" class="step-content space-y-4">
+            <h2 class="text-xl font-bold">1단계: 비행 구역 및 패턴 선택</h2>
+            <p class="text-sm text-slate-400">드론 매핑을 진행할 비행 경로 스타일을 선택하세요.</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <label class="p-4 bg-slate-700 rounded-lg cursor-pointer border-2 border-sky-500 block">
+                    <input type="radio" name="pattern" value="SingleGrid" checked class="mr-2">
+                    <span class="font-bold block text-sky-400">Single Grid (일반 격자)</span>
+                    <span class="text-xs text-slate-300 block mt-1">기본적인 2D 매핑 및 면적 스캔에 적합</span>
+                </label>
+                <label class="p-4 bg-slate-700 rounded-lg cursor-pointer border-2 border-transparent hover:border-slate-500 block">
+                    <input type="radio" name="pattern" value="DoubleGrid" class="mr-2">
+                    <span class="font-bold block text-sky-400">Double Grid (정밀 격자)</span>
+                    <span class="text-xs text-slate-300 block mt-1">종/횡 교차 비행으로 정밀한 3D 모델링용</span>
+                </label>
+                <label class="p-4 bg-slate-700 rounded-lg cursor-pointer border-2 border-transparent hover:border-slate-500 block">
+                    <input type="radio" name="pattern" value="Orbit" class="mr-2">
+                    <span class="font-bold block text-sky-400">Orbit (중심 회전)</span>
+                    <span class="text-xs text-slate-300 block mt-1">특정 건축물이나 타워 주변을 회전하며 촬영</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- 2단계: 중첩률 설정 -->
+        <div id="step-2" class="step-content space-y-4 hidden">
+            <h2 class="text-xl font-bold">2단계: 촬영 중첩률 설정</h2>
+            <p class="text-sm text-slate-400">정밀 3D 정사영상을 만들기 위한 사진 간 중첩 비율을 지정합니다.</p>
+            <div class="space-y-6 mt-4 max-w-md">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm">종중첩률 (Frontal Overlap)</label>
+                        <span id="val-overlap-y" class="text-sky-400 font-bold">80%</span>
+                    </div>
+                    <input type="range" id="overlap-y" min="60" max="90" value="80" class="w-full accent-sky-500">
+                </div>
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm">횡중첩률 (Side Overlap)</label>
+                        <span id="val-overlap-x" class="text-sky-400 font-bold">70%</span>
+                    </div>
+                    <input type="range" id="overlap-x" min="50" max="85" value="70" class="w-full accent-sky-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- 3단계: 고도 & 속도 설정 -->
+        <div id="step-3" class="step-content space-y-4 hidden">
+            <h2 class="text-xl font-bold">3단계: 비행 고도 및 안전 속도</h2>
+            <p class="text-sm text-slate-400">지상 해상도(GSD)와 배터리 효율을 고려해 비행 물리 값을 설정합니다.</p>
+            <div class="space-y-6 mt-4 max-w-md">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm">비행 고도 (Altitude)</label>
+                        <span id="val-altitude" class="text-sky-400 font-bold">100 m</span>
+                    </div>
+                    <input type="range" id="altitude" min="30" max="150" value="100" class="w-full accent-sky-500">
+                </div>
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm">비행 속도 (Speed)</label>
+                        <span id="val-speed" class="text-sky-400 font-bold">5 m/s</span>
+                    </div>
+                    <input type="range" id="speed" min="2" max="12" value="5" class="w-full accent-sky-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- 4단계: 3D 가상 체험 (시뮬레이터) -->
+        <div id="step-4" class="step-content space-y-4 hidden">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-bold text-emerald-400">4단계: 3D 가상 비행 시뮬레이션</h2>
+                    <p class="text-sm text-slate-400">설정한 경로대로 드론이 자동 이동하며 가상 촬영을 진행합니다.</p>
+                </div>
+                <button id="btn-simulate" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg transition shadow">
+                    시뮬레이션 시작
+                </button>
+            </div>
+            
+            <!-- 3D 캔버스 영역 -->
+            <div class="canvas-container mt-2">
+                <div id="three-canvas"></div>
+                <!-- 실시간 계기판 (텔레메트리 OSD) -->
+                <div class="absolute top-4 left-4 bg-slate-900/80 p-3 rounded-lg text-xs font-mono space-y-1 backdrop-blur border border-slate-700">
+                    <div>ALT: <span id="osd-alt" class="text-sky-400 font-bold">0</span> m</div>
+                    <div>SPD: <span id="osd-spd" class="text-sky-400 font-bold">0</span> m/s</div>
+                    <div>CAM: <span id="osd-photos" class="text-yellow-400 font-bold">0</span> 장 촬영됨</div>
+                    <div>STATUS: <span id="osd-status" class="text-emerald-400 font-bold">대기 중</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 하단 네비게이션 버튼 바 -->
+        <div class="flex justify-between items-center pt-4 border-t border-slate-700 mt-6">
+            <button id="btn-prev" class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg font-semibold transition disabled:opacity-30 disabled:cursor-not-allowed" disabled>
+                이전 단계
+            </button>
+            <button id="btn-next" class="bg-sky-600 hover:bg-sky-500 px-5 py-2 rounded-lg font-semibold transition text-white">
+                다음 단계
+            </button>
+        </div>
+
+    </div>
+
+    <!-- 스크립트 로직 로드 -->
+    <script>
+        // 전역 상태 관리 데이터
+        let currentStep = 1;
+        const config = {
+            pattern: 'SingleGrid',
+            overlapX: 70,
+            overlapY: 80,
+            altitude: 100,
+            speed: 5
+        };
+
+        // UI 요소 셀렉터
+        const steps = [null, document.getElementById('step-1'), document.getElementById('step-2'), document.getElementById('step-3'), document.getElementById('step-4')];
+        const btnNext = document.getElementById('btn-next');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnSimulate = document.getElementById('btn-simulate');
+
+        // 슬라이더 바인딩 연동
+        document.getElementById('overlap-y').addEventListener('input', (e) => {
+            config.overlapY = parseInt(e.target.value);
+            document.getElementById('val-overlap-y').innerText = config.overlapY + '%';
+        });
+        document.getElementById('overlap-x').addEventListener('input', (e) => {
+            config.overlapX = parseInt(e.target.value);
+            document.getElementById('val-overlap-x').innerText = config.overlapX + '%';
+        });
+        document.getElementById('altitude').addEventListener('input', (e) => {
+            config.altitude = parseInt(e.target.value);
+            document.getElementById('val-altitude').innerText = config.altitude + ' m';
+        });
+        document.getElementById('speed').addEventListener('input', (e) => {
+            config.speed = parseInt(e.target.value);
+            document.getElementById('val-speed').innerText = config.speed + ' m/s';
+        });
+
+        // 라디오 버튼 핸들러
+        document.querySelectorAll('input[name="pattern"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                config.pattern = e.target.value;
+                // 하이라이트 테두리 변경 스타일링
+                document.querySelectorAll('input[name="pattern"]').forEach(r => {
+                    r.parentElement.classList.remove('border-sky-500');
+                    r.parentElement.classList.add('border-transparent');
+                });
+                if(e.target.checked) e.target.parentElement.classList.add('border-sky-500');
+            });
+        });
+
+        // 단계 이동 제어 (Wizard Logic)
+        btnNext.addEventListener('click', () => {
+            if (currentStep < 4) {
+                steps[currentStep].classList.add('hidden');
+                document.getElementById(`ind-${currentStep}`).className = "text-slate-400";
+                
+                currentStep++;
+                
+                steps[currentStep].classList.remove('hidden');
+                document.getElementById(`ind-${currentStep}`).className = "text-sky-400 border-b-2 border-sky-400 pb-1";
+                
+                if (currentStep === 4) {
+                    btnNext.innerText = "처음으로";
+                    init3DScene(); // 4단계 진입 시 3D 로드
+                }
+                btnPrev.disabled = false;
+            } else {
+                // '처음으로' 액션 시 완전 리셋
+                location.reload();
+            }
+        });
+
+        btnPrev.addEventListener('click', () => {
+            if (currentStep > 1) {
+                steps[currentStep].classList.add('hidden');
+                document.getElementById(`ind-${currentStep}`).className = "text-slate-400";
+                
+                currentStep--;
+                
+                steps[currentStep].classList.remove('hidden');
+                document.getElementById(`ind-${currentStep}`).className = "text-sky-400 border-b-2 border-sky-400 pb-1";
+                
+                btnNext.innerText = "다음 단계";
+                if (currentStep === 1) btnPrev.disabled = true;
+                
+                // 4단계를 벗어날 경우 3D 루프 중단 처리 가능
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            }
+        });
+
+        // ==========================================
+        // Three.js 3D 엔진 및 실시간 비행 구현 구역
+        // ==========================================
+        let scene, camera, renderer, controls;
+        let droneMesh, flightPathLine;
+        let waypoints = [];
+        let currentWaypointIndex = 0;
+        let isSimulating = false;
+        let animationFrameId = null;
+        let photoCount = 0;
+
+        function init3DScene() {
+            const container = document.getElementById('three-canvas');
+            container.innerHTML = ''; // 중복 생성 방지 클리어
+            
+            // 1. 씬 및 기본 카메라 앵글 세팅
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            scene.fog = new THREE.FogExp2(0x020617, 0.005);
+
+            camera = new THREE.PerspectiveCamera(60, container.clientWidth / 500, 0.1, 1000);
+            camera.position.set(120, 130, 180);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, 500);
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // 2. 조명 조절
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionLight(0x38bdf8, 1);
+            dirLight.position.set(100, 200, 50);
+            scene.add(dirLight);
+
+            // 3. 지형 격자판 (Terrain Representation)
+            const gridHelper = new THREE.GridHelper(200, 20, 0x334155, 0x1e293b);
+            gridHelper.position.y = 0;
+            scene.add(gridHelper);
+
+            // 가상의 산/지표 지형 모형 추가
+            const tGeo = new THREE.ConeGeometry(30, 25, 4);
+            const tMat = new THREE.MeshLambertMaterial({ color: 0x1e293b, flatShading: true });
+            const mountain = new THREE.Mesh(tGeo, tMat);
+            mountain.position.set(-30, 12.5, -20);
+            scene.add(mountain);
+
+            // 4. 입력 기반 웨이포인트(비행 경로 데이터) 동적 연산
+            generateWaypoints();
+
+            // 5. 비행 궤적 가이드 선 렌더링
+            const points = waypoints.map(wp => new THREE.Vector3(wp.x, wp.y, wp.z));
+            const pathGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            const pathMaterial = new THREE.LineBasicMaterial({ color: 0x0ea5e9, linewidth: 2 });
+            flightPathLine = new THREE.Line(pathGeometry, pathMaterial);
+            scene.add(flightPathLine);
+
+            // 촬영 위치 마커 추가
+            waypoints.forEach(wp => {
+                if(wp.isPhotoPoint) {
+                    const markerGeo = new THREE.SphereGeometry(1.2, 8, 8);
+                    const markerMat = new THREE.MeshBasicMaterial({ color: 0xeab308 });
+                    const marker = new THREE.Mesh(markerGeo, markerMat);
+                    marker.position.set(wp.x, wp.y, wp.z);
+                    scene.add(marker);
+                }
+            });
+
+            // 6. 드론(기체 무인기) 간이 모델 생성
+            const droneGroup = new THREE.Group();
+            // 메인 바디
+            const bodyGeo = new THREE.BoxGeometry(6, 1.5, 6);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.5 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            droneGroup.add(body);
+            // 전면 방향 표시 LED 헤드
+            const headGeo = new THREE.BoxGeometry(2, 1, 1);
+            const headMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.set(0, 0, -3.2);
+            droneGroup.add(head);
+
+            droneMesh = droneGroup;
+            // 시작점으로 기체 정렬배치
+            if(waypoints.length > 0) {
+                droneMesh.position.set(waypoints[0].x, waypoints[0].y, waypoints[0].z);
+            }
+            scene.add(droneMesh);
+
+            // 초기 대기 상태 계기판 동기화
+            document.getElementById('osd-alt').innerText = config.altitude;
+            document.getElementById('osd-spd').innerText = config.speed;
+            document.getElementById('osd-photos').innerText = 0;
+
+            // 7. 메인 프레임 루프 가동
+            animate();
+        }
+
+        // 경로 계산 알고리즘 엔진
+        function generateWaypoints() {
+            waypoints = [];
+            const alt = config.altitude * 0.6; // 화면 scale 렌더링 축척 비율 조정
+            
+            // 중첩률 기반 간격 간접 제어 연산 (높을수록 조밀하게 많이 생성)
+            const interval = Math.max(10, 45 - (config.overlapY * 0.4));
+            const sideInterval = Math.max(12, 50 - (config.overlapX * 0.4));
+
+            if (config.pattern === 'SingleGrid' || config.pattern === 'DoubleGrid') {
+                // 지그재그 격자 노선 연산
+                let toggle = true;
+                for (let x = -60; x <= 60; x += sideInterval) {
+                    if (toggle) {
+                        for (let z = -60; z <= 60; z += interval) {
+                            waypoints.push({ x: x, y: alt, z: z, isPhotoPoint: true });
+                        }
+                    } else {
+                        for (let z = 60; z >= -60; z -= interval) {
+                            waypoints.push({ x: x, y: alt, z: z, isPhotoPoint: true });
+                        }
+                    }
+                    toggle = !toggle;
+                }
+                
+                // Double Grid 면 가로방향으로 레이어 한 세트 더 추가 오버랩
+                if (config.pattern === 'DoubleGrid') {
+                    let toggleAlt = true;
+                    for (let z = -60; z <= 60; z += sideInterval) {
+                        if (toggleAlt) {
+                            for (let x = -60; x <= 60; x += interval) {
+                                waypoints.push({ x: x, y: alt + 5, z: z, isPhotoPoint: true }); // 약간 층을 다르게 연출
+                            }
+                        } else {
+                            for (let x = 60; x >= -60; x -= interval) {
+                                waypoints.push({ x: x, y: alt + 5, z: z, isPhotoPoint: true });
+                            }
+                        }
+                        toggleAlt = !toggleAlt;
+                    }
+                }
+            } else if (config.pattern === 'Orbit') {
+                // 원형 구조물 선회 노선 수학 알고리즘 (Sin, Cos)
+                const radius = 40;
+                for (let theta = 0; theta <= Math.PI * 4; theta += 0.25) {
+                    // 고도가 회전하면서 조금씩 나선형으로 내려오거나 올라가는 감각
+                    waypoints.push({
+                        x: Math.cos(theta) * radius,
+                        y: alt + (theta * 2),
+                        z: Math.sin(theta) * radius,
+                        isPhotoPoint: true
+                    });
+                }
+            }
+        }
+
+        // 시뮬레이션 작동 트리거
+        btnSimulate.addEventListener('click', () => {
+            if(!isSimulating) {
+                isSimulating = true;
+                currentWaypointIndex = 0;
+                photoCount = 0;
+                document.getElementById('osd-status').innerText = "비행 임무 중";
+                document.getElementById('osd-status').className = "text-yellow-400 font-bold";
+                btnSimulate.innerText = "정지";
+                btnSimulate.className = "bg-red-600 hover:bg-red-500 text-white font-bold px-4 py-2 rounded-lg transition shadow";
+            } else {
+                stopSimulation();
+            }
+        });
+
+        function stopSimulation() {
+            isSimulating = false;
+            document.getElementById('osd-status').innerText = "임무 완료/대기";
+            document.getElementById('osd-status').className = "text-emerald-400 font-bold";
+            btnSimulate.innerText = "시뮬레이션 시작";
+            btnSimulate.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg transition shadow";
+        }
+
+        // 실시간 프레임 애니메이션 처리 (드론 이동 물리 로직)
+        function animate() {
+            animationFrameId = requestAnimationFrame(animate);
+            
+            if (controls) controls.update();
+
+            if (isSimulating && waypoints.length > 0) {
+                const target = waypoints[currentWaypointIndex];
+                const dronePos = droneMesh.position;
+
+                // 속도 가중치 반영 이동 연산
+                const moveSpeed = (config.speed * 0.05);
+                const targetVec = new THREE.Vector3(target.x, target.y, target.z);
+                const dir = targetVec.clone().sub(dronePos);
+                const distance = dir.length();
+
+                if (distance > moveSpeed) {
+                    dir.normalize();
+                    droneMesh.position.add(dir.multiplyScalar(moveSpeed));
+                    
+                    // 기체 진행 방향 바라보게 회전 행렬 처리
+                    const lookTarget = targetVec.clone();
+                    lookTarget.y = droneMesh.position.y; // 수평 정렬
+                    droneMesh.lookAt(lookTarget);
+                } else {
+                    // 웨이포인트(목적점) 도달 완료 순간
+                    droneMesh.position.copy(targetVec);
+                    
+                    if(target.isPhotoPoint) {
+                        photoCount++;
+                        document.getElementById('osd-photos').innerText = photoCount;
+                        
+                        // 화면 플래시 연출 피드백용 효과 (임시 백그라운드 밝힘처리)
+                        renderer.setClearColor(0x38bdf8, 0.4);
+                        setTimeout(() => { renderer.setClearColor(0x020617, 1); }, 40);
+                    }
+
+                    currentWaypointIndex++;
+                    
+                    // 모든 비행이 끝났을 때
+                    if (currentWaypointIndex >= waypoints.length) {
+                        stopSimulation();
+                    }
+                }
+            }
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        // 윈도우 리사이즈 처리 대응
+        window.addEventListener('resize', () => {
+            if(camera && renderer) {
+                const container = document.getElementById('three-canvas');
+                if(container && container.clientWidth > 0) {
+                    camera.aspect = container.clientWidth / 500;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, 500);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
